@@ -17,6 +17,8 @@ import yfinance as yf
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 
+from broker import BrokerError, format_connection, open_broker
+
 STOP_PCT = 0.005
 TARGET_PCT = 0.01
 STARTING_CASH = 10_000.0
@@ -325,7 +327,13 @@ def simulate(df: pd.DataFrame) -> dict:
     }
 
 
-def run(ticker: str) -> None:
+def run(ticker: str, broker_name: str) -> None:
+    try:
+        connection = open_broker(broker_name).connect()
+    except BrokerError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(format_connection(connection))
+    print("Orders stay in the simulation. This run does not send them to the broker.")
     tuned = tune(ticker)
     one_minute, fifteen = download(ticker)
     one_minute = add_ema_rsi(one_minute, "1m_")
@@ -354,8 +362,9 @@ def run(ticker: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Simulate the notebook random-forest bot.")
     parser.add_argument("ticker", nargs="?", default="AAPL", help="Yahoo symbol, such as AAPL or BTC-USD")
+    parser.add_argument("--broker", choices=["paper", "tradelocker"], default="paper")
     args = parser.parse_args()
-    run(args.ticker.upper())
+    run(args.ticker.upper(), args.broker)
 
 
 if __name__ == "__main__":
