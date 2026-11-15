@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Train one forest on several stocks and ETFs, and a second forest on option chains.
+"""Train one forest on stocks, ETFs, and futures, plus an option-chain forest.
 
-The price model uses each name's latest regular session and predicts whether the
-close is higher five minutes later. The option model uses the current nearest
-expiration and predicts whether a contract's implied volatility is above the
-median of that chain. Neither run sends a broker order.
+Stocks and ETFs use the latest regular session. Futures symbols ending in =F use
+the latest 18:00-to-17:00 America/New_York session. The option model uses the
+nearest expiration. Neither run sends a broker order.
 """
 
 from __future__ import annotations
@@ -32,6 +31,7 @@ from run_bot import (
 
 STOCKS = ["AAPL", "MSFT", "NVDA", "META", "TSLA", "AMZN"]
 ETFS = ["SPY", "QQQ", "IWM", "DIA"]
+FUTURES = ["ES=F", "NQ=F", "YM=F", "GC=F", "CL=F"]
 OPTION_UNDERLIERS = ["SPY", "QQQ", "IWM", "AAPL", "TSLA", "META"]
 
 
@@ -73,8 +73,8 @@ def train_price_model(frames: list[pd.DataFrame]) -> None:
     test["predicted"] = model.predict(x_test)
     print(f"\nPooled bars: {len(rows)}  train: {len(x_train)}  test: {len(x_test)}")
     print(f"Pooled test accuracy: {model.score(x_test, y_test):.3f}")
-    print(f"{'Symbol':<8} {'Kind':<6} {'Bars':>6} {'Test acc':>9} {'Sim cash':>10} {'P/L':>9}")
-    kind = {name: "stock" for name in STOCKS} | {name: "etf" for name in ETFS}
+    print(f"{'Symbol':<8} {'Kind':<8} {'Bars':>6} {'Test acc':>9} {'Sim cash':>10} {'P/L':>9}")
+    kind = {name: "stock" for name in STOCKS} | {name: "etf" for name in ETFS} | {name: "future" for name in FUTURES}
     for frame in frames:
         symbol = frame["symbol"].iloc[0]
         held = test[test["symbol"] == symbol]
@@ -86,9 +86,11 @@ def train_price_model(frames: list[pd.DataFrame]) -> None:
         symbol_rows["is_trade_allowed"] = True
         result = simulate(symbol_rows)
         print(
-            f"{symbol:<8} {kind[symbol]:<6} {len(symbol_rows):>6} {accuracy:>9.3f} "
+            f"{symbol:<8} {kind[symbol]:<8} {len(symbol_rows):>6} {accuracy:>9.3f} "
             f"{result['cash']:>10.2f} {result['profit']:>9.2f}"
         )
+    if any(frame["symbol"].iloc[0] in FUTURES for frame in frames):
+        print("Futures cash uses the quote in a $10,000 account, not the exchange contract multiplier.")
 
 
 def option_chain(symbol: str) -> pd.DataFrame:
@@ -152,7 +154,8 @@ def main() -> int:
     frames = []
     print("Stocks:", ", ".join(STOCKS))
     print("ETFs:", ", ".join(ETFS))
-    for ticker in STOCKS + ETFS:
+    print("Futures:", ", ".join(FUTURES))
+    for ticker in STOCKS + ETFS + FUTURES:
         try:
             frame, label = build_session(ticker)
         except Exception as exc:

@@ -48,6 +48,10 @@ def is_crypto(ticker: str) -> bool:
     return ticker.upper().endswith("-USD")
 
 
+def is_future(ticker: str) -> bool:
+    return ticker.upper().endswith("=F")
+
+
 def tune(ticker: str) -> dict:
     params = {"adxMin": 20, "diSpreadMin": 5, "entryWindowBars": 3, "pullbackTicks": 10}
     if ticker.upper() == "AAPL":
@@ -120,6 +124,13 @@ def select_window(df: pd.DataFrame, ticker: str) -> tuple[pd.DataFrame, str]:
         start = end - pd.DateOffset(hours=24)
         window = df[df.index >= start].copy()
         label = f"crypto 24h ending {end}"
+    elif is_future(ticker):
+        last = df.index[-1]
+        session_day = last.date() if last.hour < 18 else (last + pd.Timedelta(days=1)).date()
+        start = pd.Timestamp(session_day, tz=last.tz) - pd.Timedelta(days=1) + pd.Timedelta(hours=18)
+        stop = pd.Timestamp(session_day, tz=last.tz) + pd.Timedelta(hours=17)
+        window = df[(df.index >= start) & (df.index < stop)].copy()
+        label = f"futures session {start:%Y-%m-%d %H:%M} to {stop:%Y-%m-%d %H:%M} America/New_York"
     else:
         rth = df.between_time("09:30", "16:00")
         if rth.empty:
